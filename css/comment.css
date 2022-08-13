@@ -11,6 +11,7 @@ body {
 .posted-by, .date, .upvotes, .comment-text, .awards-text, .share-text, .award-count {
     color: rgb(129, 131, 132);
     font-size: 12px;
+    margin-top: 0px;
 }
 
 .float-child {
@@ -22,7 +23,6 @@ body {
 img {
     width: 20px;
     height: 20px;
-    margin-top: 10px;
     margin-right: 0px;
     margin-left: 0px;
 }
@@ -36,6 +36,8 @@ img {
 .username {
     color: #D7DADC;
     font-size: 15px;
+    margin-left: 0px;
+    margin-top: 0px;
 }
 
 .main-bar {
@@ -60,4 +62,8 @@ img {
     width: 30px;
     height: 30px;
     border-radius: 50%;
+}
+
+.award-icon {
+    margin-top: 0px;
 }

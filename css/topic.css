@@ -32,6 +32,7 @@ img {
     padding: 10px;
     margin-top: 0px;
     margin-left: 0px;
+    padding-top: auto;
 }
 
 .less-margin {
@@ -45,4 +46,28 @@ img {
     border-radius: 5px;
     overflow: hidden;
     margin-bottom: 5px;
+}
+
+.topic-content-text {
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+
+.nsfw {
+    color : rgb(255, 88, 91);
+    border : 1px solid rgb(255, 88, 91);
+    border-radius : 2px;
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 11px;
+    margin-top: auto;
+}
+
+.main-bar {
+    margin-top: 10px;
+    width: 90%;
+}
+
+.row {
+    display: flex;
 }
