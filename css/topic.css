@@ -1,0 +1,48 @@
+body {
+    background-color: rgb(26, 26, 27);
+    font-family: 'IBM Plex Sans';
+    letter-spacing: 0.3px;
+}
+
+.topic-content-text {
+    color: #D7DADC;
+}
+
+.posted-by, .date, .upvotes, .comment-text, .awards-text, .share-text, .award-count {
+    color: rgb(129, 131, 132);
+    font-size: 12px;
+}
+
+.float-child {
+    float: left;
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+img {
+    width: 20px;
+    height: 20px;
+    margin-top: 10px;
+    margin-right: 0px;
+    margin-left: 0px;
+}
+
+.side-bar {
+    background-color: rgb(23, 23, 23);
+    padding: 10px;
+    margin-top: 0px;
+    margin-left: 0px;
+}
+
+.less-margin {
+    margin-right: 0px;
+    margin-left: 0px;
+}
+
+.topic {
+    border: #3b3d3e solid;
+    border-width: 0.01em;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
