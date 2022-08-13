@@ -1,5 +1,4 @@
 from datetime import datetime
-from turtle import width
 from gtts import gTTS
 import praw
 from bs4 import BeautifulSoup
@@ -10,6 +9,7 @@ import moviepy.editor as mpy
 from mutagen.mp3 import MP3
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 import random
+from PIL import Image
 
 # create class RedditAuthor
 class RedditAuthor:
@@ -54,6 +54,13 @@ def readCredentials():
         return lines[0].strip(), lines[1].strip()
 
 
+def commentHasLink(comment):
+    if comment.find("http") != -1:
+        return True
+    else:
+        return False
+
+
 def getPosts(numberOfPosts):
     postsList = []         
     redditUsername, redditPassword = readCredentials()
@@ -62,11 +69,11 @@ def getPosts(numberOfPosts):
                          user_agent='reditTTS (by /u/DenseInspection1507)',
                          username=redditUsername,
                          password=redditPassword)
-    subreddit = reddit.subreddit('askReddit')
+    subreddit = reddit.subreddit('AmItheAsshole')
     for submission in subreddit.hot(limit=numberOfPosts):
         commentList = []
-        for top_level_comment in submission.comments.list()[:10]:
-            if type(top_level_comment) is praw.models.Comment and len(top_level_comment.body) > 15:
+        for top_level_comment in submission.comments.list()[:2]:
+            if type(top_level_comment) is praw.models.Comment and len(top_level_comment.body) > 15 and commentHasLink(top_level_comment.body) != True:
                 author = RedditAuthor(top_level_comment.author.name, top_level_comment.author.icon_img)
                 comment = RedditComment(top_level_comment.body, author, top_level_comment.ups, top_level_comment.created_utc, top_level_comment)
                 commentList.append(comment)
@@ -164,6 +171,13 @@ def generateTopicScreenShot(post : RedditObject):
 
     options = {'enable-local-file-access': None}
     imgkit.from_file(directory + "topicOutput.html", directory + "topic.png", options=options)
+
+    # crop image
+    img = Image.open(directory + "topic.png")
+    w, h = img.size
+    img = img.crop((0, 0, w/2, h))
+    img.save(directory + "topic.png")
+
     print("done")
 
 
@@ -223,6 +237,12 @@ def generateCommentScreenShot(comment : RedditComment, commentId):
     options = {'enable-local-file-access': None}
     imgkit.from_file(directory + filenameOutput, directory + filename, options=options)
 
+    # crop image
+    img = Image.open(directory + filename)
+    w, h = img.size
+    img = img.crop((0, 0, w * (60/100), h))
+    img.save(directory + filename)
+
 
 def getMP3AudioDuration(mp3File):
     # get duration of mp3 file
@@ -266,7 +286,7 @@ def createVideo(post : RedditObject):
         commentDuration = getMP3AudioDuration(commentAudio)
         print("comment duration: " + str(commentDuration))
         print("video length: " + str(videoLength))
-        if videoLength + commentDuration < 10:# or i == 0:        
+        if videoLength + commentDuration < 120 or i == 0:        
             frame = mpy.ImageClip(commentImage, duration=commentDuration + 1)
             frame = frame.set_audio(mpy.AudioFileClip(commentAudio))
             commentFrame = FrameObject(i, frame, commentImage, commentAudio, commentDuration)
@@ -289,22 +309,22 @@ def createVideo(post : RedditObject):
     # set new video dimensions
     videoWidth = video.w
     videoHeight = video.h
-    video = video.resize((videoWidth,videoHeight * 1.5))
+    video = video.resize((videoWidth * 1.8 , videoHeight * 1.8))
 
 
     # put video on top of background video
     video = mpy.CompositeVideoClip([backgroundVideo, video])
 
-    video.write_videofile(directory + "video.mp4", fps=60)
+    video.write_videofile(directory + "video.mp4", fps=10)
 
 
 def main():
-    post = getPosts(1)[0]
-    #generateTopicScreenShot(post)
-    #for i in range(len(post.comments)):
-    #    generateCommentScreenShot(post.comments[i], i)
+    post = getPosts(2)[1]
+    generateTopicScreenShot(post)
+    for i in range(len(post.comments)):
+        generateCommentScreenShot(post.comments[i], i)
     
-    #postToSpeech(post)
+    postToSpeech(post)
     createVideo(post)
     
 
