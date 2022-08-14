@@ -69,10 +69,12 @@ def getPosts(numberOfPosts):
                          user_agent='reditTTS (by /u/DenseInspection1507)',
                          username=redditUsername,
                          password=redditPassword)
-    subreddit = reddit.subreddit('AmItheAsshole')
+    print("Connected to Reddit")
+    subreddit = reddit.subreddit('askReddit')
+    print("Querrying subreddit:", subreddit.display_name)
     for submission in subreddit.hot(limit=numberOfPosts):
         commentList = []
-        for top_level_comment in submission.comments.list()[:2]:
+        for top_level_comment in submission.comments.list()[:10]:
             if type(top_level_comment) is praw.models.Comment and len(top_level_comment.body) > 15 and commentHasLink(top_level_comment.body) != True:
                 author = RedditAuthor(top_level_comment.author.name, top_level_comment.author.icon_img)
                 comment = RedditComment(top_level_comment.body, author, top_level_comment.ups, top_level_comment.created_utc, top_level_comment)
@@ -315,17 +317,18 @@ def createVideo(post : RedditObject):
     # put video on top of background video
     video = mpy.CompositeVideoClip([backgroundVideo, video])
 
-    video.write_videofile(directory + "video.mp4", fps=10)
+    video.write_videofile(directory + "video.mp4", fps=60)
 
 
 def main():
-    post = getPosts(2)[1]
-    generateTopicScreenShot(post)
-    for i in range(len(post.comments)):
-        generateCommentScreenShot(post.comments[i], i)
-    
-    postToSpeech(post)
-    createVideo(post)
-    
+    posts = getPosts(1)
+    for post in posts:
+        generateTopicScreenShot(post)
+        for i in range(len(post.comments)):
+            generateCommentScreenShot(post.comments[i], i)
+        
+        postToSpeech(post)
+        createVideo(post)
+        
 
 main()
