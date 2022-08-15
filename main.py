@@ -1,6 +1,4 @@
 from datetime import datetime
-from fileinput import filename
-from re import sub
 from gtts import gTTS
 import praw
 from bs4 import BeautifulSoup
@@ -9,9 +7,13 @@ from datetime import datetime
 import os
 import moviepy.editor as mpy
 from mutagen.mp3 import MP3
-from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 import random
 from PIL import Image
+import soundfile as sf
+from pysndfx import AudioEffectsChain
+from pydub import AudioSegment
+import pyrubberband as pyrb
+import wave
 
 # create class RedditAuthor
 class RedditAuthor:
@@ -83,9 +85,10 @@ def getPosts(subreddit ,numberOfPosts):
         for top_level_comment in submission.comments.list()[:10]:
             print("Exploring comment")
             if type(top_level_comment) is praw.models.Comment and len(top_level_comment.body) > 15 and commentHasLink(top_level_comment.body) != True:
-                if top_level_comment.author != None:
+                try:
+                    print(top_level_comment.author.name)
                     author = RedditAuthor(top_level_comment.author.name, top_level_comment.author.icon_img)
-                else:
+                except AttributeError or TypeError:
                     author = RedditAuthor("[deleted]", "https://www.redditstatic.com/avatars/defaults/v2/avatar_default_1.png")
                 comment = RedditComment(top_level_comment.body, author, top_level_comment.ups, top_level_comment.created_utc, top_level_comment)
                 commentList.append(comment)
@@ -114,20 +117,44 @@ def getPosts(subreddit ,numberOfPosts):
 
 
 def postToSpeech(post):
+    print("Generating topic audio")
     directory = "./" + post.id + "/"
     topic = gTTS(post.topic, lang="en-us", slow=False, tld="co.uk")
-    topic.save(directory + "topic.mp3")
+    topic.save(directory +"topic.mp3")
+    sound = AudioSegment.from_mp3(directory + "topic.mp3")
+    sound.export(directory + "topic.wav", format="wav")
+    # speed up topic audio by 1.5x
+    s,rate = sf.read(directory + "topic.wav")
+    stretch = pyrb.time_stretch(s, rate, 1.2)
+    pitch = pyrb.pitch_shift(stretch, rate, 0.5)
+    sf.write(directory + "topic.wav", stretch, rate, format="wav")
+
 
     if post.obj.selftext != "":
         sentences = post.sentences
         for sentence in sentences:
             submissionBody = gTTS(sentence, lang="en-us", slow=False, tld="co.uk")
             submissionBody.save(directory + "body" + str(sentences.index(sentence)) + ".mp3")
+            sound = AudioSegment.from_mp3(directory + "body" + str(sentences.index(sentence)) + ".mp3")
+            sound.export(directory + "body" + str(sentences.index(sentence)) + ".wav", format="wav")
+            # speed up body audio by 1.5x
+            s,rate = sf.read(directory + "body" + str(sentences.index(sentence)) + ".wav")
+            stretch = pyrb.time_stretch(s, rate, 1.2)
+            pitch = pyrb.pitch_shift(stretch, rate, 0.5)
+            sf.write(directory + "body" + str(sentences.index(sentence)) + ".wav", stretch, rate, format="wav")
 
     num = 0
     for comment in post.comments:
+        print("Generating comment audio")
         speech = gTTS(comment.comment, lang="en", slow=False)
         speech.save(directory + "comment" + str(num) + ".mp3")
+        sound = AudioSegment.from_mp3(directory + "comment" + str(num) + ".mp3")
+        sound.export(directory + "comment" + str(num) + ".wav", format="wav")
+        # speed up comment audio by 1.5x
+        s,rate = sf.read(directory + "comment" + str(num) + ".wav")
+        stretch = pyrb.time_stretch(s, rate, 1.2)
+        pitch = pyrb.pitch_shift(stretch, rate, 0.5)
+        sf.write(directory + "comment" + str(num) + ".wav", pitch, rate, format="wav")
         num+=1
 
 
@@ -313,10 +340,10 @@ def generateCommentScreenShot(comment : RedditComment, commentId):
     img.save(directory + filename)
 
 
-def getMP3AudioDuration(mp3File):
-    # get duration of mp3 file
-    audio = MP3(mp3File)
-    duration = audio.info.length
+def getWAVAudioDuration(wavFile):
+    # get duration of wav file
+    audio = wave.open(wavFile, 'r')
+    duration = audio.getnframes() / audio.getframerate()
     return duration
 
 
@@ -330,6 +357,7 @@ class FrameObject:
 
 
 def createVideo(post):
+    print("Creating video")
     # get post directory
     directory = "./" + post.id + "/"
 
@@ -338,8 +366,8 @@ def createVideo(post):
 
     # get topic frame
     topicImage = directory + "topic.png"
-    topicAudio = directory + "topic.mp3"
-    topicDuration = getMP3AudioDuration(topicAudio)
+    topicAudio = directory + "topic.wav"
+    topicDuration = getWAVAudioDuration(topicAudio)
 
     frame = mpy.ImageClip(topicImage, duration=topicDuration + 0.5)
     frame = frame.set_audio(mpy.AudioFileClip(topicAudio))
@@ -351,8 +379,8 @@ def createVideo(post):
     if post.obj.selftext != "":
         for sentence in post.sentences:    
             bodyImage = directory + "body" + str(post.sentences.index(sentence)) + ".png"
-            bodyAudio = directory + "body" + str(post.sentences.index(sentence)) + ".mp3"
-            bodyDuration = getMP3AudioDuration(bodyAudio)
+            bodyAudio = directory + "body" + str(post.sentences.index(sentence)) + ".wav"
+            bodyDuration = getWAVAudioDuration(bodyAudio)
             frame = mpy.ImageClip(bodyImage, duration=bodyDuration + 0.5)
             frame = frame.set_audio(mpy.AudioFileClip(bodyAudio))
             bodyFrame = FrameObject(100, frame, bodyImage, bodyAudio, bodyDuration)
@@ -364,8 +392,8 @@ def createVideo(post):
     i = 0
     while i < (len(post.comments)):
         commentImage = directory + "comment" + str(i) + ".png"
-        commentAudio = directory + "comment" + str(i) + ".mp3"
-        commentDuration = getMP3AudioDuration(commentAudio)
+        commentAudio = directory + "comment" + str(i) + ".wav"
+        commentDuration = getWAVAudioDuration(commentAudio)
         print("comment duration: " + str(commentDuration))
         print("video length: " + str(videoLength))
         if videoLength + commentDuration < 120 or i == 0:        
@@ -401,7 +429,7 @@ def createVideo(post):
 
 
 def main():
-    posts = getPosts("amitheasshole" , 3)
+    posts = getPosts("amitheasshole" , 2)
     for post in posts[1:]:
         generateTopicScreenShot(post)
         if post.obj.selftext != "":
@@ -411,6 +439,5 @@ def main():
         
         postToSpeech(post)
         createVideo(post)
-        
-
+    
 main()
