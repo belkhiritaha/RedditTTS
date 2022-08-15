@@ -1,4 +1,5 @@
 from datetime import datetime
+from re import sub
 from gtts import gTTS
 import praw
 from bs4 import BeautifulSoup
@@ -111,8 +112,9 @@ def getPosts(subreddit ,numberOfPosts):
                 sentences.pop(i)
 
         post = RedditObject(submission.title, commentList, submission.id, submission.ups, submission.author.name, submission.created_utc, submission.num_comments, submission.all_awardings, submission.over_18, submission, sentences)
-        postsList.append(post)
-        print("added post")
+        if len(sentences) < 15:
+            postsList.append(post)
+            print("added post")
     return postsList
 
 
@@ -427,17 +429,41 @@ def createVideo(post):
 
     video.write_videofile(directory + "video.mp4", fps=60)
 
+    # return the duration and the video path
+    return video.duration, directory
+
+
+def breakIntoParts(videoDuration, videoPath):
+    threshold = 90  # seconds
+    if videoDuration < threshold:
+        return [videoPath]
+
+    else:
+        video = mpy.VideoFileClip(videoPath + "video.mp4")
+        # break video into parts
+        parts = []
+        i = 0
+        while i < int(videoDuration / threshold):
+            # get subclip
+            subclip = video.subclip(i * threshold, (i + 1) * threshold)
+            # write subclip to file
+            subclip.write_videofile(videoPath + "part" + str(i) + ".mp4", fps=60)
+            parts.append(videoPath + "part" + str(i) + ".mp4")
+            i += 1
+        return parts
+
 
 def main():
-    posts = getPosts("amitheasshole" , 2)
-    for post in posts[1:]:
-        generateTopicScreenShot(post)
-        if post.obj.selftext != "":
-            generateSubmissionBodyScreenShot(post)
-        for i in range(len(post.comments)):
-            generateCommentScreenShot(post.comments[i], i)
+    #posts = getPosts("relationship_advice" , 5)
+    #for post in posts[1:]:
+        #generateTopicScreenShot(post)
+        #if post.obj.selftext != "":
+        #    generateSubmissionBodyScreenShot(post)
+        #for i in range(len(post.comments)):
+        #    generateCommentScreenShot(post.comments[i], i)
         
-        postToSpeech(post)
-        createVideo(post)
+        #postToSpeech(post)
+        #videoDuration, videoPath = createVideo(post)
+    breakIntoParts(335, "./woqgwz/")
     
 main()
