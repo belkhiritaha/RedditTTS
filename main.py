@@ -1,4 +1,6 @@
 from datetime import datetime
+from fileinput import filename
+from re import sub
 from gtts import gTTS
 import praw
 from bs4 import BeautifulSoup
@@ -20,7 +22,7 @@ class RedditAuthor:
 
 # create class RedditObject
 class RedditObject:
-    def __init__(self, topic : str, comments : list, id : str, upvotes : int, author, timestamp, nbComments, awards, isNSFW):
+    def __init__(self, topic : str, comments : list, id : str, upvotes : int, author, timestamp, nbComments, awards, isNSFW, obj, sentences):
         self.id = id
         self.topic = topic
         self.comments = comments
@@ -30,6 +32,8 @@ class RedditObject:
         self.nbComments = nbComments
         self.awards = awards
         self.isNSFW = isNSFW
+        self.obj = obj
+        self.sentences = sentences
 
     def __str__(self):
         return self.topic + " with " + str(len(self.comments))
@@ -61,7 +65,7 @@ def commentHasLink(comment):
         return False
 
 
-def getPosts(numberOfPosts):
+def getPosts(subreddit ,numberOfPosts):
     postsList = []         
     redditUsername, redditPassword = readCredentials()
     reddit = praw.Reddit(client_id='HSpPGBBIzLbXoGHSUvaMnQ',
@@ -70,16 +74,40 @@ def getPosts(numberOfPosts):
                          username=redditUsername,
                          password=redditPassword)
     print("Connected to Reddit")
-    subreddit = reddit.subreddit('askReddit')
+    subreddit = reddit.subreddit(subreddit)
     print("Querrying subreddit:", subreddit.display_name)
+    # get all time best posts
     for submission in subreddit.hot(limit=numberOfPosts):
+        print("Exploring submission")
         commentList = []
         for top_level_comment in submission.comments.list()[:10]:
+            print("Exploring comment")
             if type(top_level_comment) is praw.models.Comment and len(top_level_comment.body) > 15 and commentHasLink(top_level_comment.body) != True:
-                author = RedditAuthor(top_level_comment.author.name, top_level_comment.author.icon_img)
+                if top_level_comment.author != None:
+                    author = RedditAuthor(top_level_comment.author.name, top_level_comment.author.icon_img)
+                else:
+                    author = RedditAuthor("[deleted]", "https://www.redditstatic.com/avatars/defaults/v2/avatar_default_1.png")
                 comment = RedditComment(top_level_comment.body, author, top_level_comment.ups, top_level_comment.created_utc, top_level_comment)
                 commentList.append(comment)
-        post = RedditObject(submission.title, commentList, submission.id, submission.ups, submission.author.name, submission.created_utc, submission.num_comments, submission.all_awardings, submission.over_18)
+        
+        sentences = []
+        if submission.selftext != "":
+            currentText = submission.selftext
+            # split into sentences
+            sentences = currentText.split(".")
+
+            # join 2 sentences
+            for i in range(len(sentences)):
+                if i < len(sentences) - 1:
+                    sentences[i] = sentences[i] + "." + sentences[i+1]
+                    sentences.pop(i+1)
+        
+        # remove sentences that are ""
+        for i in range(len(sentences)):
+            if sentences[i] == "":
+                sentences.pop(i)
+
+        post = RedditObject(submission.title, commentList, submission.id, submission.ups, submission.author.name, submission.created_utc, submission.num_comments, submission.all_awardings, submission.over_18, submission, sentences)
         postsList.append(post)
         print("added post")
     return postsList
@@ -87,9 +115,15 @@ def getPosts(numberOfPosts):
 
 def postToSpeech(post):
     directory = "./" + post.id + "/"
-    topic = gTTS(post.topic, lang="en", slow=False)
-    #sox_effects = ("speed", "1.5")
+    topic = gTTS(post.topic, lang="en-us", slow=False, tld="co.uk")
     topic.save(directory + "topic.mp3")
+
+    if post.obj.selftext != "":
+        sentences = post.sentences
+        for sentence in sentences:
+            submissionBody = gTTS(sentence, lang="en-us", slow=False, tld="co.uk")
+            submissionBody.save(directory + "body" + str(sentences.index(sentence)) + ".mp3")
+
     num = 0
     for comment in post.comments:
         speech = gTTS(comment.comment, lang="en", slow=False)
@@ -143,7 +177,7 @@ def generateTopicScreenShot(post : RedditObject):
     commentsTag.string = formatUpvotes(post.nbComments) + " comments"
 
     # replace awards
-    for award in post.awards:
+    for award in post.awards[:5]:
         awardCount = award['count']
         awardIconeURL = award['icon_url']
         # add new block of code
@@ -183,6 +217,39 @@ def generateTopicScreenShot(post : RedditObject):
     print("done")
 
 
+def generateSubmissionBodyScreenShot(post : RedditObject):
+    # get post directory
+    directory = "./" + post.id + "/"
+    html = open("templates/body.html")
+    soup = BeautifulSoup(html, "html.parser")
+
+    sentences = post.sentences
+
+    for sentence in sentences:
+        # replace body
+        bodyTag = soup.find("p", {"class": "comment-content-text"})
+        bodyTag.string = sentence
+
+        # write to html file
+        with open(directory + "bodyOutput.html", "w") as file:
+            file.write(str(soup))
+
+        sentenceIndex = sentences.index(sentence)
+        filename = directory + "body" + str(sentenceIndex) + ".png"
+
+        options = {'enable-local-file-access': None}
+        imgkit.from_file(directory + "bodyOutput.html", filename, options=options)
+
+        # remove bodyOutput.html
+        os.remove(directory + "bodyOutput.html")
+
+        # crop image
+        img = Image.open(filename)
+        w, h = img.size
+        img = img.crop((0, 0, w/2, h))
+        img.save(filename)
+
+
 def generateCommentScreenShot(comment : RedditComment, commentId):
     # get post directory
     directory = "./" + comment.obj.submission.id + "/"
@@ -215,7 +282,7 @@ def generateCommentScreenShot(comment : RedditComment, commentId):
     # replace awards
     # get awards on comment
 
-    for award in comment.obj.all_awardings:
+    for award in comment.obj.all_awardings[:5]:
         awardCount = award['count']
         awardIconeURL = award['icon_url']
         # add new block of code
@@ -242,7 +309,7 @@ def generateCommentScreenShot(comment : RedditComment, commentId):
     # crop image
     img = Image.open(directory + filename)
     w, h = img.size
-    img = img.crop((0, 0, w * (60/100), h))
+    img = img.crop((0, 0, w * (50/100), h))
     img.save(directory + filename)
 
 
@@ -262,7 +329,7 @@ class FrameObject:
         self.duration = duration
 
 
-def createVideo(post : RedditObject):
+def createVideo(post):
     # get post directory
     directory = "./" + post.id + "/"
 
@@ -273,13 +340,26 @@ def createVideo(post : RedditObject):
     topicImage = directory + "topic.png"
     topicAudio = directory + "topic.mp3"
     topicDuration = getMP3AudioDuration(topicAudio)
-    frame = mpy.ImageClip(topicImage, duration=topicDuration + 1)
+
+    frame = mpy.ImageClip(topicImage, duration=topicDuration + 0.5)
     frame = frame.set_audio(mpy.AudioFileClip(topicAudio))
     topicFrame = FrameObject(99, frame, topicImage, topicAudio, topicDuration)
     videoFrames.append(topicFrame)
 
     videoLength += topicDuration
 
+    if post.obj.selftext != "":
+        for sentence in post.sentences:    
+            bodyImage = directory + "body" + str(post.sentences.index(sentence)) + ".png"
+            bodyAudio = directory + "body" + str(post.sentences.index(sentence)) + ".mp3"
+            bodyDuration = getMP3AudioDuration(bodyAudio)
+            frame = mpy.ImageClip(bodyImage, duration=bodyDuration + 0.5)
+            frame = frame.set_audio(mpy.AudioFileClip(bodyAudio))
+            bodyFrame = FrameObject(100, frame, bodyImage, bodyAudio, bodyDuration)
+            videoFrames.append(bodyFrame)
+
+            videoLength += bodyDuration
+    
     # get comment frames
     i = 0
     while i < (len(post.comments)):
@@ -289,7 +369,7 @@ def createVideo(post : RedditObject):
         print("comment duration: " + str(commentDuration))
         print("video length: " + str(videoLength))
         if videoLength + commentDuration < 120 or i == 0:        
-            frame = mpy.ImageClip(commentImage, duration=commentDuration + 1)
+            frame = mpy.ImageClip(commentImage, duration=commentDuration + 0.5)
             frame = frame.set_audio(mpy.AudioFileClip(commentAudio))
             commentFrame = FrameObject(i, frame, commentImage, commentAudio, commentDuration)
             videoFrames.append(commentFrame)
@@ -303,16 +383,16 @@ def createVideo(post : RedditObject):
 
     # get random subclip
     randomStart = random.randint(30, int(rawBackgroundDuration) - int(video.duration) - 30)
-    backgroundVideo = rawBackground.subclip(randomStart, int(video.duration) + randomStart + 1)
+    backgroundVideo = rawBackground.subclip(randomStart, int(video.duration) + randomStart + 0.5)
     backgroundVideo = backgroundVideo.resize((1080, 1920))
 
-    # center video
-    video = video.set_position("center")
     # set new video dimensions
     videoWidth = video.w
     videoHeight = video.h
     video = video.resize((videoWidth * 1.8 , videoHeight * 1.8))
 
+    # center video
+    video = video.set_position("center")
 
     # put video on top of background video
     video = mpy.CompositeVideoClip([backgroundVideo, video])
@@ -321,9 +401,11 @@ def createVideo(post : RedditObject):
 
 
 def main():
-    posts = getPosts(1)
-    for post in posts:
+    posts = getPosts("amitheasshole" , 3)
+    for post in posts[1:]:
         generateTopicScreenShot(post)
+        if post.obj.selftext != "":
+            generateSubmissionBodyScreenShot(post)
         for i in range(len(post.comments)):
             generateCommentScreenShot(post.comments[i], i)
         

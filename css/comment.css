@@ -39,11 +39,12 @@ img {
     font-size: 15px;
     margin-left: 0px;
     margin-top: 0px;
+    width: 40%;
 }
 
 .main-bar {
     margin-top: 10px;
-    width: 90%;
+    width: 70%;
 }
 
 .less-margin {
