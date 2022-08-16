@@ -1,5 +1,6 @@
 from datetime import datetime
 from re import sub
+from turtle import pos
 from gtts import gTTS
 import praw
 from bs4 import BeautifulSoup
@@ -85,7 +86,7 @@ def getPosts(subreddit ,numberOfPosts):
         commentList = []
         for top_level_comment in submission.comments.list()[:10]:
             print("Exploring comment")
-            if type(top_level_comment) is praw.models.Comment and len(top_level_comment.body) > 15 and commentHasLink(top_level_comment.body) != True:
+            if type(top_level_comment) is praw.models.Comment and commentHasLink(top_level_comment.body) != True:
                 try:
                     print(top_level_comment.author.name)
                     author = RedditAuthor(top_level_comment.author.name, top_level_comment.author.icon_img)
@@ -107,14 +108,17 @@ def getPosts(subreddit ,numberOfPosts):
                     sentences.pop(i+1)
         
         # remove sentences that are ""
+        outliers = ["", " ", ""]
         for i in range(len(sentences)):
-            if sentences[i] == "":
+            if sentences[i] == "" or sentences[i] == ".":
                 sentences.pop(i)
 
         post = RedditObject(submission.title, commentList, submission.id, submission.ups, submission.author.name, submission.created_utc, submission.num_comments, submission.all_awardings, submission.over_18, submission, sentences)
-        if len(sentences) < 15:
-            postsList.append(post)
-            print("added post")
+        #if len(sentences) < 15:
+        postsList.append(post)
+        print("added post")
+        #else:
+         #   print("rejected post")
     return postsList
 
 
@@ -131,11 +135,12 @@ def postToSpeech(post):
     pitch = pyrb.pitch_shift(stretch, rate, 0.5)
     sf.write(directory + "topic.wav", stretch, rate, format="wav")
 
-
     if post.obj.selftext != "":
         sentences = post.sentences
         for sentence in sentences:
             submissionBody = gTTS(sentence, lang="en-us", slow=False, tld="co.uk")
+            print("Generating sentence audio")
+            print(sentence)
             submissionBody.save(directory + "body" + str(sentences.index(sentence)) + ".mp3")
             sound = AudioSegment.from_mp3(directory + "body" + str(sentences.index(sentence)) + ".mp3")
             sound.export(directory + "body" + str(sentences.index(sentence)) + ".wav", format="wav")
@@ -358,6 +363,28 @@ class FrameObject:
         self.duration = duration
 
 
+def breakIntoParts(videoFrames, threshold = 120):
+    parts = []
+    part = []
+    currentPartDuration = 0
+    i = 0
+    hasBeenAdded = False
+    while i < len(videoFrames):
+        frame = videoFrames[i]
+        if currentPartDuration + frame.duration < threshold or part == []:
+            part.append(frame)
+            currentPartDuration += frame.duration
+            i += 1
+        else:
+            parts.append(part)
+            part = []
+            currentPartDuration = 0
+            hasBeenAdded = True
+    if not hasBeenAdded:
+        parts.append(part)
+    return parts
+
+
 def createVideo(post):
     print("Creating video")
     # get post directory
@@ -390,6 +417,7 @@ def createVideo(post):
 
             videoLength += bodyDuration
     
+    print("Video length: " + str(videoLength))
     # get comment frames
     i = 0
     while i < (len(post.comments)):
@@ -405,65 +433,49 @@ def createVideo(post):
             videoFrames.append(commentFrame)
             videoLength += commentDuration
         i += 1
-    video = mpy.concatenate_videoclips([x.imageClip for x in videoFrames], method="compose")
 
-    rawBackground = mpy.VideoFileClip("../Downloads/backgroundVideo.mp4")
-    rawBackground = rawBackground.set_audio(None)
-    rawBackgroundDuration = rawBackground.duration
+    parts = breakIntoParts(videoFrames, 120)
+    print("Number of parts: " + str(len(parts)))
+    for part in parts:
+        print("Creating part")
+        video = mpy.concatenate_videoclips([x.imageClip for x in part], method="compose")
 
-    # get random subclip
-    randomStart = random.randint(30, int(rawBackgroundDuration) - int(video.duration) - 30)
-    backgroundVideo = rawBackground.subclip(randomStart, int(video.duration) + randomStart + 0.5)
-    backgroundVideo = backgroundVideo.resize((1080, 1920))
+        rawBackground = mpy.VideoFileClip("../Downloads/backgroundVideo.mp4")
+        rawBackground = rawBackground.set_audio(None)
+        rawBackgroundDuration = rawBackground.duration
 
-    # set new video dimensions
-    videoWidth = video.w
-    videoHeight = video.h
-    video = video.resize((videoWidth * 1.8 , videoHeight * 1.8))
+        # get random subclip
+        randomStart = random.randint(30, int(rawBackgroundDuration) - int(video.duration) - 30)
+        backgroundVideo = rawBackground.subclip(randomStart, int(video.duration) + randomStart + 0.5)
+        backgroundVideo = backgroundVideo.resize((1080, 1920))
 
-    # center video
-    video = video.set_position("center")
+        # set new video dimensions
+        videoWidth = video.w
+        videoHeight = video.h
+        video = video.resize((videoWidth * 1.8 , videoHeight * 1.8))
 
-    # put video on top of background video
-    video = mpy.CompositeVideoClip([backgroundVideo, video])
+        # center video
+        video = video.set_position("center")
 
-    video.write_videofile(directory + "video.mp4", fps=60)
+        # put video on top of background video
+        video = mpy.CompositeVideoClip([backgroundVideo, video])
+
+        video.write_videofile(directory + "video" + str(parts.index(part)) + ".mp4", fps=60)
 
     # return the duration and the video path
-    return video.duration, directory
-
-
-def breakIntoParts(videoDuration, videoPath):
-    threshold = 90  # seconds
-    if videoDuration < threshold:
-        return [videoPath]
-
-    else:
-        video = mpy.VideoFileClip(videoPath + "video.mp4")
-        # break video into parts
-        parts = []
-        i = 0
-        while i < int(videoDuration / threshold):
-            # get subclip
-            subclip = video.subclip(i * threshold, (i + 1) * threshold)
-            # write subclip to file
-            subclip.write_videofile(videoPath + "part" + str(i) + ".mp4", fps=60)
-            parts.append(videoPath + "part" + str(i) + ".mp4")
-            i += 1
-        return parts
-
+    return directory
+    
 
 def main():
-    #posts = getPosts("relationship_advice" , 5)
-    #for post in posts[1:]:
-        #generateTopicScreenShot(post)
-        #if post.obj.selftext != "":
-        #    generateSubmissionBodyScreenShot(post)
-        #for i in range(len(post.comments)):
-        #    generateCommentScreenShot(post.comments[i], i)
+    posts = getPosts("askreddit" , 3)
+    print(posts)
+    for post in posts[1:]:
+        generateTopicScreenShot(post)
+        if post.obj.selftext != "":
+            generateSubmissionBodyScreenShot(post)
+        for i in range(len(post.comments)):
+            generateCommentScreenShot(post.comments[i], i)
         
-        #postToSpeech(post)
-        #videoDuration, videoPath = createVideo(post)
-    breakIntoParts(335, "./woqgwz/")
-    
+        postToSpeech(post)
+        createVideo(post)
 main()
